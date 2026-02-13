@@ -79,8 +79,9 @@ func (r *Repository) GetByID(
 }
 
 // UpdateStatus updates reservation status
-func (r *Repository) UpdateStatus(
+func (r *Repository) UpdateStatusTx(
 	ctx context.Context,
+	tx *sql.Tx,
 	id int64,
 	status string,
 ) error {
@@ -91,7 +92,7 @@ func (r *Repository) UpdateStatus(
 		WHERE id = $2
 	`
 
-	_, err := r.db.ExecContext(ctx, query, status, id)
+	_, err := tx.ExecContext(ctx, query, status, id)
 	return err
 }
 
@@ -225,4 +226,43 @@ func (r *Repository) GetByIDForUpdate(
 	}
 
 	return &res, nil
+}
+
+func (r *Repository) GetExpiredForUpdate(
+	ctx context.Context,
+	tx *sql.Tx,
+	now time.Time,
+) ([]Reservation, error) {
+
+	query := `
+		SELECT id, product_id, user_id, status, expires_at, created_at
+		FROM reservations
+		WHERE status = 'ACTIVE'
+		  AND expires_at < $1
+		FOR UPDATE
+	`
+
+	rows, err := tx.QueryContext(ctx, query, now)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []Reservation
+	for rows.Next() {
+		var res Reservation
+		if err := rows.Scan(
+			&res.ID,
+			&res.ProductID,
+			&res.UserID,
+			&res.Status,
+			&res.ExpiresAt,
+			&res.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		result = append(result, res)
+	}
+
+	return result, nil
 }

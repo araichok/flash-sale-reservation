@@ -12,6 +12,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	apphttp "flash-sale-reservation/internal/http"
+	"flash-sale-reservation/internal/outbox"
 	"flash-sale-reservation/internal/product"
 )
 
@@ -53,9 +54,12 @@ func main() {
 
 	// ---------- Reservations ----------
 	reservationRepo := reservation.NewRepository(db)
+	outboxRepo := outbox.NewRepository(db)
+
 	reservationService := reservation.NewService(
 		reservationRepo,
 		productRepo,
+		outboxRepo,
 		rdb,
 	)
 

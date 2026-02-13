@@ -39,5 +39,12 @@ func NewRouter(
 		r.Get("/", reservationHandler.List) // фильтры + пагинация
 	})
 
+	// ---------- Admin ----------
+	r.Route("/admin", func(r chi.Router) {
+		r.Route("/reservations", func(r chi.Router) {
+			r.Post("/sync-expired", reservationHandler.SyncExpired)
+		})
+	})
+
 	return r
 }

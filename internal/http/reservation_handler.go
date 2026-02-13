@@ -111,3 +111,18 @@ func (h *ReservationHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	json.NewEncoder(w).Encode(res)
 }
+
+// POST /admin/reservations/sync-expired
+func (h *ReservationHandler) SyncExpired(w http.ResponseWriter, r *http.Request) {
+
+	count, err := h.service.ExpireReservations(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]int{
+		"expired": count,
+	})
+}
