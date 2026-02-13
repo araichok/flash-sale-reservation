@@ -14,7 +14,7 @@ func NewRepository(db *sql.DB) *Repository {
 	return &Repository{db: db}
 }
 
-// 1. Create reservation (ACTIVE)
+// Create creates ACTIVE reservation
 func (r *Repository) Create(
 	ctx context.Context,
 	productID int64,
@@ -23,9 +23,9 @@ func (r *Repository) Create(
 ) (*Reservation, error) {
 
 	query := `
-	INSERT INTO reservations (product_id, user_id, status, expires_at)
-	VALUES ($1, $2, 'ACTIVE', $3)
-	RETURNING id, product_id, user_id, status, expires_at, created_at
+		INSERT INTO reservations (product_id, user_id, status, expires_at)
+		VALUES ($1, $2, 'ACTIVE', $3)
+		RETURNING id, product_id, user_id, status, expires_at, created_at
 	`
 
 	var res Reservation
@@ -43,16 +43,23 @@ func (r *Repository) Create(
 		&res.ExpiresAt,
 		&res.CreatedAt,
 	)
+	if err != nil {
+		return nil, err
+	}
 
-	return &res, err
+	return &res, nil
 }
 
-// 2. Get by ID
-func (r *Repository) GetByID(ctx context.Context, id int64) (*Reservation, error) {
+// GetByID returns reservation by id
+func (r *Repository) GetByID(
+	ctx context.Context,
+	id int64,
+) (*Reservation, error) {
+
 	query := `
-	SELECT id, product_id, user_id, status, expires_at, created_at
-	FROM reservations
-	WHERE id = $1
+		SELECT id, product_id, user_id, status, expires_at, created_at
+		FROM reservations
+		WHERE id = $1
 	`
 
 	var res Reservation
@@ -64,26 +71,31 @@ func (r *Repository) GetByID(ctx context.Context, id int64) (*Reservation, error
 		&res.ExpiresAt,
 		&res.CreatedAt,
 	)
+	if err != nil {
+		return nil, err
+	}
 
-	return &res, err
+	return &res, nil
 }
 
-// 3. Update status
+// UpdateStatus updates reservation status
 func (r *Repository) UpdateStatus(
 	ctx context.Context,
 	id int64,
 	status string,
 ) error {
+
 	query := `
-	UPDATE reservations
-	SET status = $1
-	WHERE id = $2
+		UPDATE reservations
+		SET status = $1
+		WHERE id = $2
 	`
+
 	_, err := r.db.ExecContext(ctx, query, status, id)
 	return err
 }
 
-// 4. List with filters + pagination
+// List returns reservations with filters and pagination
 func (r *Repository) List(
 	ctx context.Context,
 	userID *int64,
@@ -93,12 +105,12 @@ func (r *Repository) List(
 ) ([]Reservation, error) {
 
 	query := `
-	SELECT id, product_id, user_id, status, expires_at, created_at
-	FROM reservations
-	WHERE ($1::bigint IS NULL OR user_id = $1)
-	  AND ($2::text IS NULL OR status = $2)
-	ORDER BY id DESC
-	LIMIT $3 OFFSET $4
+		SELECT id, product_id, user_id, status, expires_at, created_at
+		FROM reservations
+		WHERE ($1::bigint IS NULL OR user_id = $1)
+		  AND ($2::text IS NULL OR status = $2)
+		ORDER BY id DESC
+		LIMIT $3 OFFSET $4
 	`
 
 	rows, err := r.db.QueryContext(
@@ -116,19 +128,101 @@ func (r *Repository) List(
 
 	var result []Reservation
 	for rows.Next() {
-		var r Reservation
+		var res Reservation
 		if err := rows.Scan(
-			&r.ID,
-			&r.ProductID,
-			&r.UserID,
-			&r.Status,
-			&r.ExpiresAt,
-			&r.CreatedAt,
+			&res.ID,
+			&res.ProductID,
+			&res.UserID,
+			&res.Status,
+			&res.ExpiresAt,
+			&res.CreatedAt,
 		); err != nil {
 			return nil, err
 		}
-		result = append(result, r)
+		result = append(result, res)
 	}
 
 	return result, nil
+}
+
+func (r *Repository) HasActiveReservationTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	productID, userID int64,
+) (bool, error) {
+
+	query := `
+		SELECT EXISTS (
+			SELECT 1
+			FROM reservations
+			WHERE product_id = $1
+			  AND user_id = $2
+			  AND status = 'ACTIVE'
+		)
+	`
+
+	var exists bool
+	err := tx.QueryRowContext(ctx, query, productID, userID).Scan(&exists)
+	return exists, err
+}
+
+func (r *Repository) CreateTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	productID, userID int64,
+	expiresAt time.Time,
+) (*Reservation, error) {
+
+	query := `
+		INSERT INTO reservations (product_id, user_id, status, expires_at)
+		VALUES ($1, $2, 'ACTIVE', $3)
+		RETURNING id, product_id, user_id, status, expires_at, created_at
+	`
+
+	var res Reservation
+	err := tx.QueryRowContext(
+		ctx,
+		query,
+		productID,
+		userID,
+		expiresAt,
+	).Scan(
+		&res.ID,
+		&res.ProductID,
+		&res.UserID,
+		&res.Status,
+		&res.ExpiresAt,
+		&res.CreatedAt,
+	)
+
+	return &res, err
+}
+
+func (r *Repository) GetByIDForUpdate(
+	ctx context.Context,
+	tx *sql.Tx,
+	id int64,
+) (*Reservation, error) {
+
+	query := `
+		SELECT id, product_id, user_id, status, expires_at, created_at
+		FROM reservations
+		WHERE id = $1
+		FOR UPDATE
+	`
+
+	var res Reservation
+	err := tx.QueryRowContext(ctx, query, id).Scan(
+		&res.ID,
+		&res.ProductID,
+		&res.UserID,
+		&res.Status,
+		&res.ExpiresAt,
+		&res.CreatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &res, nil
 }

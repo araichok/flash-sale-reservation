@@ -3,6 +3,7 @@ package product
 import (
 	"context"
 	"database/sql"
+	"errors"
 )
 
 type Repository struct {
@@ -12,7 +13,6 @@ type Repository struct {
 func NewRepository(db *sql.DB) *Repository {
 	return &Repository{db: db}
 }
-
 func (r *Repository) Create(
 	ctx context.Context,
 	name string,
@@ -73,4 +73,49 @@ func (r *Repository) List(ctx context.Context) ([]Product, error) {
 	}
 
 	return products, nil
+}
+
+func (r *Repository) DecreaseStockTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	productID int64,
+) error {
+
+	query := `
+		UPDATE products
+		SET stock = stock - 1
+		WHERE id = $1 AND stock > 0
+	`
+
+	res, err := tx.ExecContext(ctx, query, productID)
+	if err != nil {
+		return err
+	}
+
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if affected == 0 {
+		return errors.New("product out of stock")
+	}
+
+	return nil
+}
+
+func (r *Repository) IncreaseStockTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	productID int64,
+) error {
+
+	query := `
+		UPDATE products
+		SET stock = stock + 1
+		WHERE id = $1
+	`
+
+	_, err := tx.ExecContext(ctx, query, productID)
+	return err
 }

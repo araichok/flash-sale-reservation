@@ -53,7 +53,11 @@ func main() {
 
 	// ---------- Reservations ----------
 	reservationRepo := reservation.NewRepository(db)
-	reservationService := reservation.NewService(reservationRepo)
+	reservationService := reservation.NewService(
+		reservationRepo,
+		productRepo,
+		rdb,
+	)
 
 	// ---------- HTTP ----------
 	router := apphttp.NewRouter(
